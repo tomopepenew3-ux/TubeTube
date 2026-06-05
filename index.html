@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TubeTube</title>
+</head>
+<body>
+
+    <!-- ロビー画面 -->
+    <div id="lobby">
+        <h2>TubeTube</h2>
+        <input type="text" id="username" placeholder="名前を入力">
+        <br><br>
+        <button id="start-btn">入室する</button>
+    </div>
+
+    <!-- メイン画面 -->
+    <div id="main" style="display:none;">
+
+        <!-- 上部：動画エリア -->
+        <div id="video-area">
+            <div id="player">動画ここ</div>
+        </div>
+
+        <!-- 中部：キュー -->
+        <div id="queue-area">
+            <div id="queue-list">キューここ</div>
+            <input type="text" id="video-url" placeholder="YouTube URLを入力">
+            <button id="add-btn">追加</button>
+        </div>
+
+        <!-- 下部：チャットと参加者 -->
+        <div id="bottom-area">
+            <div id="chat-area">
+                <div id="chat-messages">チャットここ</div>
+                <div id="reactions">
+                    <button class="reaction-btn" data-type="神">神</button>
+                    <button class="reaction-btn" data-type="草">草</button>
+                    <button class="reaction-btn" data-type="泣">泣</button>
+                    <button class="reaction-btn" data-type="熱">熱</button>
+                    <button class="reaction-btn" data-type="乙">乙</button>
+                </div>
+                <input type="text" id="chat-input" placeholder="メッセージを入力">
+                <button id="send-btn">送信</button>
+            </div>
+            <div id="participants-area">
+                <div id="participants-list">参加者ここ</div>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
