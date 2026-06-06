@@ -98,6 +98,7 @@ socket.on('playVideo', (data) => {
 // 再生コントロール同期
 socket.on('playerControl', (data) => {
     if (!player) return;
+    isSyncing = true;
     if (data.action === 'play') {
         player.seekTo(data.currentTime);
         player.playVideo();
@@ -106,6 +107,7 @@ socket.on('playerControl', (data) => {
     } else if (data.action === 'seek') {
         player.seekTo(data.currentTime);
     }
+    setTimeout(() => { isSyncing = false; }, 1000);
 });
 
 // YouTube IFrame API
