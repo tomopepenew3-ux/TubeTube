@@ -63,4 +63,62 @@ document.getElementById('add-btn').addEventListener('click', () => {
     if (!url) return;
     const videoId = extractVideoId(url);
     if (!videoId) return alert('正しいYouTube URLを入力してください');
-    socket.emit('addToQueue', { v
+    socket.emit('addToQueue', { videoId, title: videoId, addedBy: myName });
+    document.getElementById('video-url').value = '';
+});
+
+function extractVideoId(url) {
+    const match = url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+    return match ? match[1] : null;
+}
+
+socket.on('updateQueue', (queue) => updateQueue(queue));
+
+function updateQueue(queue) {
+    const list = document.getElementById('queue-list');
+    list.innerHTML = queue.map((v, i) => `<div>${i + 1}. ${v.title} (${v.addedBy})</div>`).join('');
+}
+
+socket.on('playVideo', (data) => {
+    if (!player) return;
+    isSyncing = true;
+    player.loadVideoById({ videoId: data.videoId, startSeconds: data.currentTime });
+    setTimeout(() => { isSyncing = false; }, 2000);
+});
+
+socket.on('playerControl', (data) => {
+    if (!player) return;
+    isSyncing = true;
+    if (data.action === 'play') {
+        player.seekTo(data.currentTime, true);
+        player.playVideo();
+    } else if (data.action === 'pause') {
+        player.seekTo(data.currentTime, true);
+        player.pauseVideo();
+    } else if (data.action === 'seek') {
+        player.seekTo(data.currentTime, true);
+    }
+    setTimeout(() => { isSyncing = false; }, 2000);
+});
+
+let player;
+window.onYouTubeIframeAPIReady = function () {
+    player = new YT.Player('player', {
+        height: '100%',
+        width: '100%',
+        events: {
+            onStateChange: onPlayerStateChange
+        }
+    });
+};
+
+function onPlayerStateChange(event) {
+    if (isSyncing) return;
+    if (event.data === YT.PlayerState.PLAYING) {
+        socket.emit('playerControl', { action: 'play', currentTime: player.getCurrentTime() });
+    } else if (event.data === YT.PlayerState.PAUSED) {
+        socket.emit('playerControl', { action: 'pause', currentTime: player.getCurrentTime() });
+    } else if (event.data === YT.PlayerState.ENDED) {
+        socket.emit('nextVideo');
+    }
+}
