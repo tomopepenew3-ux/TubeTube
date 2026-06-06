@@ -17,37 +17,32 @@ const rooms = {};
 io.on('connection', (socket) => {
     let currentRoom = null;
 
-    // 部屋に入る
     socket.on('joinRoom', (data) => {
         const { roomName, userName } = data;
         currentRoom = roomName;
         socket.join(roomName);
 
-        // 部屋がなければ作る
         if (!rooms[roomName]) {
             rooms[roomName] = {
                 users: [],
-                queue: [],        // 動画キュー
-                currentIndex: 0,  // 今何番目の動画か
+                queue: [],
+                currentIndex: 0,
                 isPlaying: false,
-                currentTime: 0,   // 再生位置（秒）
+                currentTime: 0,
                 lastSyncTime: Date.now()
             };
         }
 
         const room = rooms[roomName];
 
-        // 満員チェック（8人まで）
         if (room.users.length >= 8) {
             socket.emit('full', 'この部屋は満員です。');
             socket.leave(roomName);
             return;
         }
 
-        // ユーザー追加
         room.users.push({ id: socket.id, name: userName });
 
-        // 入室した人に現在の状態を送る
         socket.emit('roomState', {
             users: room.users,
             queue: room.queue,
@@ -56,10 +51,8 @@ io.on('connection', (socket) => {
             currentTime: room.currentTime
         });
 
-        // 全員に参加者リスト更新を通知
         io.to(currentRoom).emit('updateUsers', room.users);
 
-        // 入室メッセージをチャットに流す
         io.to(currentRoom).emit('chatMessage', {
             userName: 'システム',
             text: `${userName} が入室しました`,
@@ -67,7 +60,6 @@ io.on('connection', (socket) => {
         });
     });
 
-    // 動画をキューに追加
     socket.on('addToQueue', (data) => {
         const room = rooms[currentRoom];
         if (!room) return;
@@ -77,16 +69,16 @@ io.on('connection', (socket) => {
 
         io.to(currentRoom).emit('updateQueue', room.queue);
 
-        // キューが1本目なら自動で再生開始
         if (room.queue.length === 1) {
             room.isPlaying = true;
             room.currentIndex = 0;
             socket.to(currentRoom).emit('playVideo', {
-            videoId: room.queue[0].videoId,
-            currentTime: 0
-        });
+                videoId: room.queue[0].videoId,
+                currentTime: 0
+            });
+        }
+    });
 
-    // 再生・一時停止
     socket.on('playerControl', (data) => {
         const room = rooms[currentRoom];
         if (!room) return;
@@ -108,7 +100,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 次の動画へ
     socket.on('nextVideo', () => {
         const room = rooms[currentRoom];
         if (!room) return;
@@ -118,13 +109,12 @@ io.on('connection', (socket) => {
             room.currentTime = 0;
             room.isPlaying = true;
             socket.to(currentRoom).emit('playVideo', {
-            videoId: room.queue[0].videoId,
-            currentTime: 0
-        });
+                videoId: room.queue[room.currentIndex].videoId,
+                currentTime: 0
+            });
         }
     });
 
-    // キューから削除
     socket.on('removeFromQueue', (data) => {
         const room = rooms[currentRoom];
         if (!room) return;
@@ -132,7 +122,6 @@ io.on('connection', (socket) => {
         const { index } = data;
         room.queue.splice(index, 1);
 
-        // 削除した動画が現在再生中より前なら番号ずらす
         if (index < room.currentIndex) {
             room.currentIndex--;
         }
@@ -140,7 +129,6 @@ io.on('connection', (socket) => {
         io.to(currentRoom).emit('updateQueue', room.queue);
     });
 
-    // チャット
     socket.on('chatMessage', (data) => {
         const room = rooms[currentRoom];
         if (!room) return;
@@ -152,15 +140,13 @@ io.on('connection', (socket) => {
         });
     });
 
-    // リアクション
     socket.on('reaction', (data) => {
         io.to(currentRoom).emit('reaction', {
             userName: data.userName,
-            type: data.type  // 神・草・泣・熱・乙
+            type: data.type
         });
     });
 
-    // 切断
     socket.on('disconnect', () => {
         if (!currentRoom || !rooms[currentRoom]) return;
 
@@ -171,7 +157,6 @@ io.on('connection', (socket) => {
         room.users = room.users.filter(u => u.id !== socket.id);
 
         if (room.users.length === 0) {
-            // 誰もいなくなったら部屋を消す
             delete rooms[currentRoom];
         } else {
             io.to(currentRoom).emit('updateUsers', room.users);
