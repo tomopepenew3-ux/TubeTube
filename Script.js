@@ -100,14 +100,15 @@ socket.on('playerControl', (data) => {
     if (!player) return;
     isSyncing = true;
     if (data.action === 'play') {
-        player.seekTo(data.currentTime);
+        player.seekTo(data.currentTime, true);
         player.playVideo();
     } else if (data.action === 'pause') {
+        player.seekTo(data.currentTime, true);
         player.pauseVideo();
     } else if (data.action === 'seek') {
-        player.seekTo(data.currentTime);
+        player.seekTo(data.currentTime, true);
     }
-    setTimeout(() => { isSyncing = false; }, 1000);
+    setTimeout(() => { isSyncing = false; }, 2000);
 });
 
 // YouTube IFrame API
