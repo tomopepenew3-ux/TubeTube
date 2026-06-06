@@ -120,7 +120,10 @@ window.onYouTubeIframeAPIReady = function () {
     });
 };
 
+let isSyncing = false;
+
 function onPlayerStateChange(event) {
+    if (isSyncing) return;
     if (event.data === YT.PlayerState.PLAYING) {
         socket.emit('playerControl', { action: 'play', currentTime: player.getCurrentTime() });
     } else if (event.data === YT.PlayerState.PAUSED) {
