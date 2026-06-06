@@ -81,12 +81,10 @@ io.on('connection', (socket) => {
         if (room.queue.length === 1) {
             room.isPlaying = true;
             room.currentIndex = 0;
-            io.to(currentRoom).emit('playVideo', {
-                videoId: room.queue[0].videoId,
-                currentTime: 0
-            });
-        }
-    });
+            socket.to(currentRoom).emit('playVideo', {
+            videoId: room.queue[0].videoId,
+            currentTime: 0
+        });
 
     // 再生・一時停止
     socket.on('playerControl', (data) => {
@@ -119,10 +117,10 @@ io.on('connection', (socket) => {
             room.currentIndex++;
             room.currentTime = 0;
             room.isPlaying = true;
-            io.to(currentRoom).emit('playVideo', {
-                videoId: room.queue[room.currentIndex].videoId,
-                currentTime: 0
-            });
+            socket.to(currentRoom).emit('playVideo', {
+            videoId: room.queue[0].videoId,
+            currentTime: 0
+        });
         }
     });
 
