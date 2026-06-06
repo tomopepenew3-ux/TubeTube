@@ -1,4 +1,4 @@
-const socket = io();
+いいconst socket = io();
 const roomName = location.pathname.split('/')[1] || 'lobby';
 let myName = '';
 
@@ -123,6 +123,9 @@ window.onYouTubeIframeAPIReady = function () {
 };
 
 let isSyncing = false;
+
+let isSyncing = false;
+let isHost = false;
 
 function onPlayerStateChange(event) {
     if (isSyncing) return;
