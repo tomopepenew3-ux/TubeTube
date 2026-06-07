@@ -61,17 +61,14 @@ io.on('connection', (socket) => {
     });
 
     socket.on('addToQueue', (data) => {
-        console.log('addToQueue received:', currentRoom, data);
         const room = rooms[currentRoom];
         if (!room) return;
 
         const { videoId, title, addedBy } = data;
         room.queue.push({ videoId, title, addedBy });
 
-        // io.to に変更（部屋の全員のキュー表示を更新）
         io.to(currentRoom).emit('updateQueue', room.queue);
 
-        // 最初の1本目なら全員同時に自動再生
         if (room.queue.length === 1) {
             room.isPlaying = true;
             room.currentIndex = 0;
@@ -92,16 +89,13 @@ io.on('connection', (socket) => {
             room.isPlaying = true;
             room.currentTime = currentTime;
             room.lastSyncTime = Date.now();
-            // io.to に変更（操作した人含め全員に送信）
             io.to(currentRoom).emit('playerControl', { action: 'play', currentTime });
         } else if (action === 'pause') {
             room.isPlaying = false;
             room.currentTime = currentTime;
-            // io.to に変更（操作した人含め全員に送信）
             io.to(currentRoom).emit('playerControl', { action: 'pause', currentTime });
         } else if (action === 'seek') {
             room.currentTime = currentTime;
-            // io.to に変更（操作した人含め全員に送信）
             io.to(currentRoom).emit('playerControl', { action: 'seek', currentTime });
         }
     });
@@ -114,7 +108,6 @@ io.on('connection', (socket) => {
             room.currentIndex++;
             room.currentTime = 0;
             room.isPlaying = true;
-            // io.to に変更（誰かが動画終了を検知したら全員を次に進める）
             io.to(currentRoom).emit('playVideo', {
                 videoId: room.queue[room.currentIndex].videoId,
                 currentTime: 0
