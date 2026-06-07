@@ -1,6 +1,4 @@
 const socket = io();
-socket.on('connect', () => { alert('socket接続OK'); });
-socket.on('connect_error', (err) => { alert('接続失敗: ' + err.message); });
 const roomName = location.pathname.split('/')[1] || 'lobby';
 let myName = '';
 let isSyncing = false;
@@ -105,7 +103,6 @@ socket.on('playerControl', (data) => {
 
 let player;
 window.onYouTubeIframeAPIReady = function () {
-    alert('YouTube API ready');
     player = new YT.Player('player', {
         height: '100%',
         width: '100%',
