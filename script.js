@@ -105,6 +105,7 @@ socket.on('playerControl', (data) => {
 
 let player;
 window.onYouTubeIframeAPIReady = function () {
+    alert('YouTube API ready');
     player = new YT.Player('player', {
         height: '100%',
         width: '100%',
