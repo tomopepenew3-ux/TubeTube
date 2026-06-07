@@ -6,6 +6,13 @@
     <title>TubeTube</title>
 </head>
 <body>
+    <script>
+        window.onerror = function(msg, url, line) {
+            alert("フロント側でエラー発生:\n" + msg + "\n\n行番号: " + line);
+            return false;
+        };
+    </script>
+
     <div id="lobby">
         <h2>TubeTube</h2>
         <input type="text" id="username" placeholder="名前を入力">
@@ -39,6 +46,7 @@
             </div>
         </div>
     </div>
+
     <script src="https://www.youtube.com/iframe_api"></script>
     <script src="/socket.io/socket.io.js"></script>
     <script src="script.js"></script>
