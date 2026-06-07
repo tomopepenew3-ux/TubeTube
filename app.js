@@ -60,9 +60,10 @@ io.on('connection', (socket) => {
         });
     });
 
-    socket.on('addToQueue', (data) => {
-        const room = rooms[currentRoom];
-        if (!room) return;
+        socket.on('addToQueue', (data) => {
+            console.log('addToQueue received:', currentRoom, data);
+            const room = rooms[currentRoom];
+            if (!room) return;
 
         const { videoId, title, addedBy } = data;
         room.queue.push({ videoId, title, addedBy });
