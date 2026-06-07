@@ -1,7 +1,6 @@
 const socket = io();
 const roomName = location.pathname.split('/')[1] || 'lobby';
 let myName = '';
-let isSyncing = false;
 
 document.getElementById('start-btn').addEventListener('click', () => {
     const name = document.getElementById('username').value.trim();
@@ -81,24 +80,19 @@ function updateQueue(queue) {
 
 socket.on('playVideo', (data) => {
     if (!player) return;
-    isSyncing = true;
     player.loadVideoById({ videoId: data.videoId, startSeconds: data.currentTime });
-    setTimeout(() => { isSyncing = false; }, 2000);
 });
 
 socket.on('playerControl', (data) => {
     if (!player) return;
-    isSyncing = true;
     if (data.action === 'play') {
-        player.seekTo(data.currentTime, true);
+        player.seekTo(data.currentTime);
         player.playVideo();
     } else if (data.action === 'pause') {
-        player.seekTo(data.currentTime, true);
         player.pauseVideo();
     } else if (data.action === 'seek') {
-        player.seekTo(data.currentTime, true);
+        player.seekTo(data.currentTime);
     }
-    setTimeout(() => { isSyncing = false; }, 2000);
 });
 
 let player;
@@ -113,7 +107,6 @@ window.onYouTubeIframeAPIReady = function () {
 };
 
 function onPlayerStateChange(event) {
-    if (isSyncing) return;
     if (event.data === YT.PlayerState.PLAYING) {
         socket.emit('playerControl', { action: 'play', currentTime: player.getCurrentTime() });
     } else if (event.data === YT.PlayerState.PAUSED) {
