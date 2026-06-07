@@ -1,117 +1,181 @@
-const socket = io();
-const roomName = location.pathname.split('/')[1] || 'lobby';
-let myName = '';
+const express = require('express');
+const app = express();
+const http = require('http').createServer(app);
+const io = require('socket.io')(http);
+const path = require('path');
 
-document.getElementById('start-btn').addEventListener('click', () => {
-    const name = document.getElementById('username').value.trim();
-    if (!name) return alert('名前を入力してください');
-    myName = name;
-    socket.emit('joinRoom', { roomName, userName: name });
+const PORT = 3003;
+
+app.use(express.static(__dirname));
+
+app.get('/:room', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-socket.on('full', (msg) => alert(msg));
+const rooms = {};
 
-socket.on('roomState', (state) => {
-    document.getElementById('lobby').style.display = 'none';
-    document.getElementById('main').style.display = 'block';
-    updateQueue(state.queue);
-    updateParticipants(state.users);
-});
+io.on('connection', (socket) => {
+    let currentRoom = null;
 
-socket.on('updateUsers', (users) => updateParticipants(users));
+    socket.on('joinRoom', (data) => {
+        const { roomName, userName } = data;
+        currentRoom = roomName;
+        socket.join(roomName);
 
-function updateParticipants(users) {
-    const list = document.getElementById('participants-list');
-    list.innerHTML = users.map(u => `<div>${u.name}</div>`).join('');
-}
+        if (!rooms[roomName]) {
+            rooms[roomName] = {
+                users: [],
+                queue: [],
+                currentIndex: 0,
+                isPlaying: false,
+                currentTime: 0,
+                lastSyncTime: Date.now()
+            };
+        }
 
-document.getElementById('send-btn').addEventListener('click', sendChat);
-document.getElementById('chat-input').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') sendChat();
-});
+        const room = rooms[roomName];
 
-function sendChat() {
-    const text = document.getElementById('chat-input').value.trim();
-    if (!text) return;
-    socket.emit('chatMessage', { userName: myName, text });
-    document.getElementById('chat-input').value = '';
-}
+        if (room.users.length >= 8) {
+            socket.emit('full', 'この部屋は満員です。');
+            socket.leave(roomName);
+            return;
+        }
 
-socket.on('chatMessage', (data) => {
-    const div = document.createElement('div');
-    div.textContent = `${data.time} ${data.userName}: ${data.text}`;
-    const messages = document.getElementById('chat-messages');
-    messages.appendChild(div);
-    messages.scrollTop = messages.scrollHeight;
-});
+        room.users.push({ id: socket.id, name: userName });
 
-document.querySelectorAll('.reaction-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-        socket.emit('reaction', { userName: myName, type: btn.dataset.type });
+        socket.emit('roomState', {
+            users: room.users,
+            queue: room.queue,
+            currentIndex: room.currentIndex,
+            isPlaying: room.isPlaying,
+            currentTime: room.currentTime
+        });
+
+        io.to(currentRoom).emit('updateUsers', room.users);
+
+        io.to(currentRoom).emit('chatMessage', {
+            userName: 'システム',
+            text: `${userName} が入室しました`,
+            time: new Date().toLocaleTimeString('ja-JP', {hour: '2-digit', minute:'2-digit'})
+        });
     });
-});
 
-socket.on('reaction', (data) => {
-    const div = document.createElement('div');
-    div.textContent = `${data.userName}: ${data.type}`;
-    document.getElementById('chat-messages').appendChild(div);
-});
+    socket.on('addToQueue', (data) => {
+        console.log('addToQueue received:', currentRoom, data);
+        const room = rooms[currentRoom];
+        if (!room) return;
 
-document.getElementById('add-btn').addEventListener('click', () => {
-    const url = document.getElementById('video-url').value.trim();
-    if (!url) return;
-    const videoId = extractVideoId(url);
-    if (!videoId) return alert('正しいYouTube URLを入力してください');
-    socket.emit('addToQueue', { videoId, title: videoId, addedBy: myName });
-    document.getElementById('video-url').value = '';
-});
+        const { videoId, title, addedBy } = data;
+        room.queue.push({ videoId, title, addedBy });
 
-function extractVideoId(url) {
-    const match = url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-    return match ? match[1] : null;
-}
+        // io.to に変更（部屋の全員のキュー表示を更新）
+        io.to(currentRoom).emit('updateQueue', room.queue);
 
-socket.on('updateQueue', (queue) => updateQueue(queue));
-
-function updateQueue(queue) {
-    const list = document.getElementById('queue-list');
-    list.innerHTML = queue.map((v, i) => `<div>${i + 1}. ${v.title} (${v.addedBy})</div>`).join('');
-}
-
-socket.on('playVideo', (data) => {
-    if (!player) return;
-    player.loadVideoById({ videoId: data.videoId, startSeconds: data.currentTime });
-});
-
-socket.on('playerControl', (data) => {
-    if (!player) return;
-    if (data.action === 'play') {
-        player.seekTo(data.currentTime);
-        player.playVideo();
-    } else if (data.action === 'pause') {
-        player.pauseVideo();
-    } else if (data.action === 'seek') {
-        player.seekTo(data.currentTime);
-    }
-});
-
-let player;
-window.onYouTubeIframeAPIReady = function () {
-    player = new YT.Player('player', {
-        height: '100%',
-        width: '100%',
-        events: {
-            onStateChange: onPlayerStateChange
+        // 最初の1本目なら全員同時に自動再生
+        if (room.queue.length === 1) {
+            room.isPlaying = true;
+            room.currentIndex = 0;
+            io.to(currentRoom).emit('playVideo', {
+                videoId: room.queue[0].videoId,
+                currentTime: 0
+            });
         }
     });
-};
 
-function onPlayerStateChange(event) {
-    if (event.data === YT.PlayerState.PLAYING) {
-        socket.emit('playerControl', { action: 'play', currentTime: player.getCurrentTime() });
-    } else if (event.data === YT.PlayerState.PAUSED) {
-        socket.emit('playerControl', { action: 'pause', currentTime: player.getCurrentTime() });
-    } else if (event.data === YT.PlayerState.ENDED) {
-        socket.emit('nextVideo');
-    }
-}
+    socket.on('playerControl', (data) => {
+        const room = rooms[currentRoom];
+        if (!room) return;
+
+        const { action, currentTime } = data;
+
+        if (action === 'play') {
+            room.isPlaying = true;
+            room.currentTime = currentTime;
+            room.lastSyncTime = Date.now();
+            // io.to に変更（操作した人含め全員に送信）
+            io.to(currentRoom).emit('playerControl', { action: 'play', currentTime });
+        } else if (action === 'pause') {
+            room.isPlaying = false;
+            room.currentTime = currentTime;
+            // io.to に変更（操作した人含め全員に送信）
+            io.to(currentRoom).emit('playerControl', { action: 'pause', currentTime });
+        } else if (action === 'seek') {
+            room.currentTime = currentTime;
+            // io.to に変更（操作した人含め全員に送信）
+            io.to(currentRoom).emit('playerControl', { action: 'seek', currentTime });
+        }
+    });
+
+    socket.on('nextVideo', () => {
+        const room = rooms[currentRoom];
+        if (!room) return;
+
+        if (room.currentIndex < room.queue.length - 1) {
+            room.currentIndex++;
+            room.currentTime = 0;
+            room.isPlaying = true;
+            // io.to に変更（誰かが動画終了を検知したら全員を次に進める）
+            io.to(currentRoom).emit('playVideo', {
+                videoId: room.queue[room.currentIndex].videoId,
+                currentTime: 0
+            });
+        }
+    });
+
+    socket.on('removeFromQueue', (data) => {
+        const room = rooms[currentRoom];
+        if (!room) return;
+
+        const { index } = data;
+        room.queue.splice(index, 1);
+
+        if (index < room.currentIndex) {
+            room.currentIndex--;
+        }
+
+        io.to(currentRoom).emit('updateQueue', room.queue);
+    });
+
+    socket.on('chatMessage', (data) => {
+        const room = rooms[currentRoom];
+        if (!room) return;
+
+        io.to(currentRoom).emit('chatMessage', {
+            userName: data.userName,
+            text: data.text,
+            time: new Date().toLocaleTimeString('ja-JP', {hour: '2-digit', minute:'2-digit'})
+        });
+    });
+
+    socket.on('reaction', (data) => {
+        io.to(currentRoom).emit('reaction', {
+            userName: data.userName,
+            type: data.type
+        });
+    });
+
+    socket.on('disconnect', () => {
+        if (!currentRoom || !rooms[currentRoom]) return;
+
+        const room = rooms[currentRoom];
+        const user = room.users.find(u => u.id === socket.id);
+        const userName = user ? user.name : '誰か';
+
+        room.users = room.users.filter(u => u.id !== socket.id);
+
+        if (room.users.length === 0) {
+            delete rooms[currentRoom];
+        } else {
+            io.to(currentRoom).emit('updateUsers', room.users);
+            io.to(currentRoom).emit('chatMessage', {
+                userName: 'システム',
+                text: `${userName} が退室しました`,
+                time: new Date().toLocaleTimeString('ja-JP', {hour: '2-digit', minute:'2-digit'})
+            });
+        }
+    });
+});
+
+http.listen(PORT, () => {
+    console.log(`TubeTube running on port ${PORT}`);
+});
