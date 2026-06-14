@@ -116,6 +116,7 @@ window.onYouTubeIframeAPIReady = function () {
     });
 };
 
+
 function onPlayerStateChange(event) {
     if (isRemoteAction) return;
 
@@ -127,3 +128,18 @@ function onPlayerStateChange(event) {
         socket.emit('nextVideo');
     }
 }
+
+// 10秒ごとに現在時刻をサーバーに送る
+setInterval(() => {
+    if (player && player.getPlayerState && player.getPlayerState() === YT.PlayerState.PLAYING) {
+        socket.emit('playerControl', { action: 'seek', currentTime: player.getCurrentTime() });
+    }
+}, 10000);
+
+// 画面が表示状態に戻ったとき再同期
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        socket.emit('requestSync');
+    }
+});
+
