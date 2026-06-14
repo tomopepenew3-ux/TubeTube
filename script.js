@@ -86,7 +86,6 @@ socket.on('playVideo', (data) => {
     const videoData = player.getVideoData();
     const currentVideoId = videoData ? videoData.video_id : null;
 
-    // 同じ動画の同期リクエストだった場合
     if (currentVideoId === data.videoId) {
         if (Math.abs(player.getCurrentTime() - data.currentTime) > 2) {
             player.seekTo(data.currentTime, true);
@@ -98,15 +97,18 @@ socket.on('playVideo', (data) => {
         } else if (!data.isPlaying && currentState !== YT.PlayerState.PAUSED) {
             player.pauseVideo();
         }
-        isRemoteAction = false;
     } else {
-        // 新しい動画を読み込む場合
         if (data.isPlaying) {
             player.loadVideoById({ videoId: data.videoId, startSeconds: data.currentTime });
         } else {
             player.cueVideoById({ videoId: data.videoId, startSeconds: data.currentTime });
         }
     }
+
+    // 誤作動・無限ループ防止：リモート操作後、0.5秒間は自分のイベントを無視する
+    setTimeout(() => {
+        isRemoteAction = false;
+    }, 500);
 });
 
 socket.on('playerControl', (data) => {
@@ -121,16 +123,17 @@ socket.on('playerControl', (data) => {
         }
         if (currentState !== YT.PlayerState.PLAYING) {
             player.playVideo();
-        } else {
-            isRemoteAction = false;
         }
     } else if (data.action === 'pause') {
         if (currentState !== YT.PlayerState.PAUSED) {
             player.pauseVideo();
-        } else {
-            isRemoteAction = false;
         }
     }
+
+    // 誤作動・無限ループ防止：リモート操作後、0.5秒間は自分のイベントを無視する
+    setTimeout(() => {
+        isRemoteAction = false;
+    }, 500);
 });
 
 let player;
@@ -147,12 +150,8 @@ window.onYouTubeIframeAPIReady = function () {
 function onPlayerStateChange(event) {
     if (document.hidden) return;
 
-    if (isRemoteAction) {
-        if (event.data === YT.PlayerState.PLAYING || event.data === YT.PlayerState.PAUSED) {
-            isRemoteAction = false;
-        }
-        return;
-    }
+    // リモートから操作された時は、自分の通知イベントを完全にストップさせて無限ループを防御
+    if (isRemoteAction) return;
 
     if (event.data === YT.PlayerState.PLAYING) {
         socket.emit('playerControl', { action: 'play', currentTime: player.getCurrentTime() });
@@ -163,13 +162,7 @@ function onPlayerStateChange(event) {
     }
 }
 
-// 10秒ごとにサーバーへ最新状態を「こっそり」要求する（全員を巻き込まない）
-setInterval(() => {
-    if (player && player.getPlayerState) {
-        socket.emit('requestSync');
-    }
-}, 10000);
-
+// 画面が表に戻ってきたとき（タブのアクティブ化）だけ、安全に再同期を要求する
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
         socket.emit('requestSync');
