@@ -6,22 +6,27 @@ const path = require('path');
 
 const PORT = 3003;
 
+// 静的ファイル（html/css/js）を配信
 app.use(express.static(__dirname));
 
+// どのURLでもindex.htmlを返す（部屋名はURLで管理）
 app.get('/:room', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+// 部屋の状態を管理するオブジェクト
 const rooms = {};
 
 io.on('connection', (socket) => {
     let currentRoom = null;
 
+    // 入室処理
     socket.on('joinRoom', (data) => {
         const { roomName, userName } = data;
         currentRoom = roomName;
         socket.join(roomName);
 
+        // 部屋がなければ作る
         if (!rooms[roomName]) {
             rooms[roomName] = {
                 users: [],
@@ -35,6 +40,7 @@ io.on('connection', (socket) => {
 
         const room = rooms[roomName];
 
+        // 満員チェック
         if (room.users.length >= 8) {
             socket.emit('full', 'この部屋は満員です。');
             socket.leave(roomName);
@@ -43,6 +49,7 @@ io.on('connection', (socket) => {
 
         room.users.push({ id: socket.id, name: userName });
 
+        // 入室した人に現在の部屋の状態を送る
         socket.emit('roomState', {
             users: room.users,
             queue: room.queue,
@@ -50,8 +57,8 @@ io.on('connection', (socket) => {
             isPlaying: room.isPlaying,
             currentTime: room.currentTime
         });
-        
-        // 入室時に現在再生中の動画があれば送る
+
+        // 入室時に再生中の動画があれば送る
         if (room.queue.length > 0) {
             socket.emit('playVideo', {
                 videoId: room.queue[room.currentIndex].videoId,
@@ -59,8 +66,10 @@ io.on('connection', (socket) => {
             });
         }
 
+        // 全員に参加者リスト更新を通知
         io.to(currentRoom).emit('updateUsers', room.users);
 
+        // 入室メッセージをチャットに流す
         io.to(currentRoom).emit('chatMessage', {
             userName: 'システム',
             text: `${userName} が入室しました`,
@@ -68,125 +77,7 @@ io.on('connection', (socket) => {
         });
     });
 
+    // 動画をキューに追加
     socket.on('addToQueue', (data) => {
         const room = rooms[currentRoom];
-        if (!room) return;
-
-        const { videoId, title, addedBy } = data;
-        room.queue.push({ videoId, title, addedBy });
-
-        io.to(currentRoom).emit('updateQueue', room.queue);
-
-        if (room.queue.length === 1) {
-            room.isPlaying = true;
-            room.currentIndex = 0;
-            io.to(currentRoom).emit('playVideo', {
-                videoId: room.queue[0].videoId,
-                currentTime: 0
-            });
-        }
-    });
-
-    socket.on('playerControl', (data) => {
-        const room = rooms[currentRoom];
-        if (!room) return;
-
-        const { action, currentTime } = data;
-
-        if (action === 'play') {
-            room.isPlaying = true;
-            room.currentTime = currentTime;
-            room.lastSyncTime = Date.now();
-            io.to(currentRoom).emit('playerControl', { action: 'play', currentTime });
-        } else if (action === 'pause') {
-            room.isPlaying = false;
-            room.currentTime = currentTime;
-            io.to(currentRoom).emit('playerControl', { action: 'pause', currentTime });
-        } else if (action === 'seek') {
-            room.currentTime = currentTime;
-            io.to(currentRoom).emit('playerControl', { action: 'seek', currentTime });
-        }
-    });
-
-    socket.on('nextVideo', () => {
-        const room = rooms[currentRoom];
-        if (!room) return;
-
-        if (room.currentIndex < room.queue.length - 1) {
-            room.currentIndex++;
-            room.currentTime = 0;
-            room.isPlaying = true;
-            io.to(currentRoom).emit('playVideo', {
-                videoId: room.queue[room.currentIndex].videoId,
-                currentTime: 0
-            });
-        }
-    });
-
-    socket.on('removeFromQueue', (data) => {
-        const room = rooms[currentRoom];
-        if (!room) return;
-
-        const { index } = data;
-        room.queue.splice(index, 1);
-
-        if (index < room.currentIndex) {
-            room.currentIndex--;
-        }
-
-        io.to(currentRoom).emit('updateQueue', room.queue);
-    });
-
-    socket.on('chatMessage', (data) => {
-        const room = rooms[currentRoom];
-        if (!room) return;
-
-        io.to(currentRoom).emit('chatMessage', {
-            userName: data.userName,
-            text: data.text,
-            time: new Date().toLocaleTimeString('ja-JP', {hour: '2-digit', minute:'2-digit'})
-        });
-    });
-
-    socket.on('reaction', (data) => {
-        io.to(currentRoom).emit('reaction', {
-            userName: data.userName,
-            type: data.type
-        });
-    });
-    
-    socket.on('requestSync', () => {
-    const room = rooms[currentRoom];
-    if (!room || room.queue.length === 0) return;
-    socket.emit('playVideo', {
-        videoId: room.queue[room.currentIndex].videoId,
-        currentTime: room.currentTime
-    });
-});
-
-
-    socket.on('disconnect', () => {
-        if (!currentRoom || !rooms[currentRoom]) return;
-
-        const room = rooms[currentRoom];
-        const user = room.users.find(u => u.id === socket.id);
-        const userName = user ? user.name : '誰か';
-
-        room.users = room.users.filter(u => u.id !== socket.id);
-
-        if (room.users.length === 0) {
-            delete rooms[currentRoom];
-        } else {
-            io.to(currentRoom).emit('updateUsers', room.users);
-            io.to(currentRoom).emit('chatMessage', {
-                userName: 'システム',
-                text: `${userName} が退室しました`,
-                time: new Date().toLocaleTimeString('ja-JP', {hour: '2-digit', minute:'2-digit'})
-            });
-        }
-    });
-});
-
-http.listen(PORT, () => {
-    console.log(`TubeTube running on port ${PORT}`);
-});
+        if (!
