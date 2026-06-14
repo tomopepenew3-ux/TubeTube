@@ -50,6 +50,14 @@ io.on('connection', (socket) => {
             isPlaying: room.isPlaying,
             currentTime: room.currentTime
         });
+        
+        // 入室時に現在再生中の動画があれば送る
+        if (room.queue.length > 0) {
+            socket.emit('playVideo', {
+                videoId: room.queue[room.currentIndex].videoId,
+                currentTime: room.currentTime
+            });
+        }
 
         io.to(currentRoom).emit('updateUsers', room.users);
 
