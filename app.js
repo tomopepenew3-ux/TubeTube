@@ -210,6 +210,7 @@ io.on('connection', (socket) => {
             });
         }
     });
+});
 
 http.listen(PORT, () => {
     console.log(`TubeTube running on port ${PORT}`);
