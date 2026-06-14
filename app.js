@@ -177,6 +177,15 @@ io.on('connection', (socket) => {
     });
 });
 
+socket.on('requestSync', () => {
+    const room = rooms[currentRoom];
+    if (!room || room.queue.length === 0) return;
+    socket.emit('playVideo', {
+        videoId: room.queue[room.currentIndex].videoId,
+        currentTime: room.currentTime
+    });
+});
+
 http.listen(PORT, () => {
     console.log(`TubeTube running on port ${PORT}`);
 });
