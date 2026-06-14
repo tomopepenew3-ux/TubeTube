@@ -1,187 +1,29 @@
-const socket = io();
-const roomName = location.pathname.split('/')[1] || 'lobby';
-let myName = '';
-let isRemoteAction = false;
+    socket.on('disconnect', () => {
+        if (!currentRoom || !rooms[currentRoom]) return;
 
-document.getElementById('start-btn').addEventListener('click', () => {
-    const name = document.getElementById('username').value.trim();
-    if (!name) return alert('名前を入力してください');
-    myName = name;
-    socket.emit('joinRoom', { roomName, userName: name });
-});
+        const room = rooms[currentRoom];
+        const user = room.users.find(u => u.id === socket.id);
+        const userName = user ? user.name : '誰か';
 
-socket.on('full', (msg) => alert(msg));
+        room.users = room.users.filter(u => u.id !== socket.id);
 
-socket.on('roomState', (state) => {
-    document.getElementById('lobby').style.display = 'none';
-    document.getElementById('main').style.display = 'block';
-    updateQueue(state.queue);
-    updateParticipants(state.users);
-});
-
-socket.on('updateUsers', (users) => updateParticipants(users));
-
-function updateParticipants(users) {
-    const list = document.getElementById('participants-list');
-    list.innerHTML = users.map(u => `<div>${u.name}</div>`).join('');
-}
-
-document.getElementById('send-btn').addEventListener('click', sendChat);
-document.getElementById('chat-input').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') sendChat();
-});
-
-function sendChat() {
-    const text = document.getElementById('chat-input').value.trim();
-    if (!text) return;
-    socket.emit('chatMessage', { userName: myName, text });
-    document.getElementById('chat-input').value = '';
-}
-
-socket.on('chatMessage', (data) => {
-    const div = document.createElement('div');
-    div.textContent = `${data.time} ${data.userName}: ${data.text}`;
-    const messages = document.getElementById('chat-messages');
-    messages.appendChild(div);
-    messages.scrollTop = messages.scrollHeight;
-});
-
-document.querySelectorAll('.reaction-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-        socket.emit('reaction', { userName: myName, type: btn.dataset.type });
-    });
-});
-
-socket.on('reaction', (data) => {
-    const div = document.createElement('div');
-    div.textContent = `${data.userName}: ${data.type}`;
-    document.getElementById('chat-messages').appendChild(div);
-});
-
-document.getElementById('add-btn').addEventListener('click', () => {
-    const url = document.getElementById('video-url').value.trim();
-    if (!url) return;
-    const videoId = extractVideoId(url);
-    if (!videoId) return alert('正しいYouTube URLを入力してください');
-    socket.emit('addToQueue', { videoId, title: videoId, addedBy: myName });
-    document.getElementById('video-url').value = '';
-});
-
-function extractVideoId(url) {
-    const match = url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-    return match ? match[1] : null;
-}
-
-socket.on('updateQueue', (queue) => updateQueue(queue));
-
-function updateQueue(queue) {
-    const list = document.getElementById('queue-list');
-    list.innerHTML = queue.map((v, i) => `<div>${i + 1}. ${v.title} (${v.addedBy})</div>`).join('');
-}
-
-socket.on('playVideo', (data) => {
-    if (!player || !player.getVideoData) return;
-    isRemoteAction = true;
-
-    const videoData = player.getVideoData();
-    const currentVideoId = videoData ? videoData.video_id : null;
-
-    if (currentVideoId === data.videoId) {
-
-    if (Math.abs(player.getCurrentTime() - data.currentTime) > 0.5) { // 2 から 0.5 に変更
-        player.seekTo(data.currentTime, true);
-    }
-
-        
-        const currentState = player.getPlayerState();
-        if (data.isPlaying && currentState !== YT.PlayerState.PLAYING) {
-            player.playVideo();
-        } else if (!data.isPlaying && currentState !== YT.PlayerState.PAUSED) {
-            player.pauseVideo();
-        }
-        isRemoteAction = false;
-    } else {
-        if (data.isPlaying) {
-            player.loadVideoById({ videoId: data.videoId, startSeconds: data.currentTime });
+        if (room.users.length === 0) {
+            delete rooms[currentRoom];
         } else {
-            player.cueVideoById({ videoId: data.videoId, startSeconds: data.currentTime });
-        }
-    }
-});
+            // ★追加：ユーザーが減っても、再生中ならその状態と時間を維持させる
+            if (room.isPlaying) {
+                const elapsedTime = (Date.now() - room.lastSyncTime) / 1000;
+                room.currentTime += elapsedTime;
+                room.lastSyncTime = Date.now();
+            }
 
-socket.on('playerControl', (data) => {
-    if (!player || !player.getPlayerState) return;
-    
-    isRemoteAction = true;
-    const currentState = player.getPlayerState();
-
-    if (data.action === 'play') {
-        if (Math.abs(player.getCurrentTime() - data.currentTime) > 1.5) {
-            player.seekTo(data.currentTime, true);
-        }
-        if (currentState !== YT.PlayerState.PLAYING) {
-            player.playVideo();
-        } else {
-            isRemoteAction = false;
-        }
-    } else if (data.action === 'pause') {
-        if (currentState !== YT.PlayerState.PAUSED) {
-            player.pauseVideo();
-        } else {
-            isRemoteAction = false;
-        }
-    }
-});
-
-let player;
-window.onYouTubeIframeAPIReady = function () {
-    player = new YT.Player('player', {
-        height: '100%',
-        width: '100%',
-        events: {
-            onStateChange: onPlayerStateChange
+            io.to(currentRoom).emit('updateUsers', room.users);
+            io.to(currentRoom).emit('chatMessage', {
+                userName: 'システム',
+                text: `${userName} が一時的に離脱、または退室しました`,
+                time: new Date().toLocaleTimeString('ja-JP', {hour: '2-digit', minute:'2-digit'})
+            });
         }
     });
-};
 
-function onPlayerStateChange(event) {
-    // 裏にいるときは、その人のプレイヤーがどうなろうとサーバーには通知しない！
-    if (document.hidden || document.visibilityState === 'hidden') return;
-
-    if (isRemoteAction) {
-        if (event.data === YT.PlayerState.PLAYING || event.data === YT.PlayerState.PAUSED) {
-            isRemoteAction = false;
-        }
-        return;
-    }
-
-    if (event.data === YT.PlayerState.PLAYING) {
-        socket.emit('playerControl', { action: 'play', currentTime: player.getCurrentTime() });
-    } else if (event.data === YT.PlayerState.PAUSED) {
-        socket.emit('playerControl', { action: 'pause', currentTime: player.getCurrentTime() });
-    } else if (event.data === YT.PlayerState.ENDED) {
-        socket.emit('nextVideo');
-    }
-}
-
-
-setInterval(() => {
-    if (player && player.getPlayerState) {
-        socket.emit('requestSync');
-    }
-}, 10000);
-
-// 他のタブに行ったら一時停止、戻ってきたら同期して再生する処理
-document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-        // 戻ってきたら最新の状態をサーバーに要求して同期
-        socket.emit('requestSync');
-    } else {
-        // 他のタブに行ったら、自分のプレイヤーだけ一時停止する（サーバーには通知しない）
-        if (player && player.pauseVideo) {
-            isRemoteAction = true; // 自分の操作としてサーバーに送らないためのフラグ
-            player.pauseVideo();
-        }
-    }
-});
 
