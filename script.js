@@ -172,4 +172,3 @@ document.addEventListener('visibilitychange', () => {
         socket.emit('requestSync');
     }
 });
-
