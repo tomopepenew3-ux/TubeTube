@@ -154,6 +154,16 @@ io.on('connection', (socket) => {
             type: data.type
         });
     });
+    
+    socket.on('requestSync', () => {
+    const room = rooms[currentRoom];
+    if (!room || room.queue.length === 0) return;
+    socket.emit('playVideo', {
+        videoId: room.queue[room.currentIndex].videoId,
+        currentTime: room.currentTime
+    });
+});
+
 
     socket.on('disconnect', () => {
         if (!currentRoom || !rooms[currentRoom]) return;
@@ -174,15 +184,6 @@ io.on('connection', (socket) => {
                 time: new Date().toLocaleTimeString('ja-JP', {hour: '2-digit', minute:'2-digit'})
             });
         }
-    });
-});
-
-socket.on('requestSync', () => {
-    const room = rooms[currentRoom];
-    if (!room || room.queue.length === 0) return;
-    socket.emit('playVideo', {
-        videoId: room.queue[room.currentIndex].videoId,
-        currentTime: room.currentTime
     });
 });
 
