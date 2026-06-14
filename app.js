@@ -93,8 +93,9 @@ io.on('connection', (socket) => {
             room.isPlaying = true;
             room.currentIndex = 0;
             io.to(currentRoom).emit('playVideo', {
-                videoId: room.queue[0].videoId,
-                currentTime: 0
+            videoId: room.queue[0].videoId,
+            currentTime: 0,
+            isPlaying: true
             });
         }
     });
