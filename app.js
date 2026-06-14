@@ -43,7 +43,6 @@ io.on('connection', (socket) => {
 
         room.users.push({ id: socket.id, name: userName });
 
-        // 後から入った人のために、動画の経過時間を計算
         let actualTime = room.currentTime;
         if (room.isPlaying) {
             const elapsedTime = (Date.now() - room.lastSyncTime) / 1000;
@@ -61,7 +60,8 @@ io.on('connection', (socket) => {
         if (room.queue.length > 0) {
             socket.emit('playVideo', {
                 videoId: room.queue[room.currentIndex].videoId,
-                currentTime: actualTime
+                currentTime: actualTime,
+                isPlaying: room.isPlaying
             });
         }
 
@@ -90,7 +90,8 @@ io.on('connection', (socket) => {
             room.lastSyncTime = Date.now();
             io.to(currentRoom).emit('playVideo', {
                 videoId: room.queue[0].videoId,
-                currentTime: 0
+                currentTime: 0,
+                isPlaying: true
             });
         }
     });
@@ -127,7 +128,8 @@ io.on('connection', (socket) => {
             room.lastSyncTime = Date.now();
             io.to(currentRoom).emit('playVideo', {
                 videoId: room.queue[room.currentIndex].videoId,
-                currentTime: 0
+                currentTime: 0,
+                isPlaying: true
             });
         }
     });
@@ -176,7 +178,8 @@ io.on('connection', (socket) => {
 
         socket.emit('playVideo', {
             videoId: room.queue[room.currentIndex].videoId,
-            currentTime: actualTime
+            currentTime: actualTime,
+            isPlaying: room.isPlaying
         });
     });
 
