@@ -87,9 +87,11 @@ socket.on('playVideo', (data) => {
     const currentVideoId = videoData ? videoData.video_id : null;
 
     if (currentVideoId === data.videoId) {
-        if (Math.abs(player.getCurrentTime() - data.currentTime) > 2) {
-            player.seekTo(data.currentTime, true);
-        }
+
+    if (Math.abs(player.getCurrentTime() - data.currentTime) > 0.5) { // 2 から 0.5 に変更
+        player.seekTo(data.currentTime, true);
+    }
+
         
         const currentState = player.getPlayerState();
         if (data.isPlaying && currentState !== YT.PlayerState.PLAYING) {
@@ -143,7 +145,8 @@ window.onYouTubeIframeAPIReady = function () {
 };
 
 function onPlayerStateChange(event) {
-    if (document.hidden) return;
+    // 裏にいるときは、その人のプレイヤーがどうなろうとサーバーには通知しない！
+    if (document.hidden || document.visibilityState === 'hidden') return;
 
     if (isRemoteAction) {
         if (event.data === YT.PlayerState.PLAYING || event.data === YT.PlayerState.PAUSED) {
@@ -161,14 +164,24 @@ function onPlayerStateChange(event) {
     }
 }
 
+
 setInterval(() => {
     if (player && player.getPlayerState) {
         socket.emit('requestSync');
     }
 }, 10000);
 
+// 他のタブに行ったら一時停止、戻ってきたら同期して再生する処理
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
+        // 戻ってきたら最新の状態をサーバーに要求して同期
         socket.emit('requestSync');
+    } else {
+        // 他のタブに行ったら、自分のプレイヤーだけ一時停止する（サーバーには通知しない）
+        if (player && player.pauseVideo) {
+            isRemoteAction = true; // 自分の操作としてサーバーに送らないためのフラグ
+            player.pauseVideo();
+        }
     }
 });
+
