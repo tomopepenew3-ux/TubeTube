@@ -80,9 +80,33 @@ function updateQueue(queue) {
 }
 
 socket.on('playVideo', (data) => {
-    if (!player) return;
+    if (!player || !player.getVideoData) return;
     isRemoteAction = true;
-    player.loadVideoById({ videoId: data.videoId, startSeconds: data.currentTime });
+
+    const videoData = player.getVideoData();
+    const currentVideoId = videoData ? videoData.video_id : null;
+
+    // 同じ動画の同期リクエストだった場合
+    if (currentVideoId === data.videoId) {
+        if (Math.abs(player.getCurrentTime() - data.currentTime) > 2) {
+            player.seekTo(data.currentTime, true);
+        }
+        
+        const currentState = player.getPlayerState();
+        if (data.isPlaying && currentState !== YT.PlayerState.PLAYING) {
+            player.playVideo();
+        } else if (!data.isPlaying && currentState !== YT.PlayerState.PAUSED) {
+            player.pauseVideo();
+        }
+        isRemoteAction = false;
+    } else {
+        // 新しい動画を読み込む場合
+        if (data.isPlaying) {
+            player.loadVideoById({ videoId: data.videoId, startSeconds: data.currentTime });
+        } else {
+            player.cueVideoById({ videoId: data.videoId, startSeconds: data.currentTime });
+        }
+    }
 });
 
 socket.on('playerControl', (data) => {
@@ -92,7 +116,7 @@ socket.on('playerControl', (data) => {
     const currentState = player.getPlayerState();
 
     if (data.action === 'play') {
-        if (Math.abs(player.getCurrentTime() - data.currentTime) > 1) {
+        if (Math.abs(player.getCurrentTime() - data.currentTime) > 1.5) {
             player.seekTo(data.currentTime, true);
         }
         if (currentState !== YT.PlayerState.PLAYING) {
@@ -106,9 +130,6 @@ socket.on('playerControl', (data) => {
         } else {
             isRemoteAction = false;
         }
-    } else if (data.action === 'seek') {
-        player.seekTo(data.currentTime, true);
-        isRemoteAction = false;
     }
 });
 
@@ -124,6 +145,8 @@ window.onYouTubeIframeAPIReady = function () {
 };
 
 function onPlayerStateChange(event) {
+    if (document.hidden) return;
+
     if (isRemoteAction) {
         if (event.data === YT.PlayerState.PLAYING || event.data === YT.PlayerState.PAUSED) {
             isRemoteAction = false;
@@ -140,9 +163,10 @@ function onPlayerStateChange(event) {
     }
 }
 
+// 10秒ごとにサーバーへ最新状態を「こっそり」要求する（全員を巻き込まない）
 setInterval(() => {
-    if (player && player.getPlayerState && player.getPlayerState() === YT.PlayerState.PLAYING) {
-        socket.emit('playerControl', { action: 'seek', currentTime: player.getCurrentTime() });
+    if (player && player.getPlayerState) {
+        socket.emit('requestSync');
     }
 }, 10000);
 
@@ -151,5 +175,3 @@ document.addEventListener('visibilitychange', () => {
         socket.emit('requestSync');
     }
 });
-
-
