@@ -159,7 +159,6 @@ window.onYouTubeIframeAPIReady = function () {
 };
 
 // プレイヤーの状態が変わったときの処理
-console.log("STATE", event.data);
 function onPlayerStateChange(event) {
     // 自分が裏（非表示）にいるときは、サーバーへ「停止」命令などを絶対に送らない
     if (document.hidden) return;
