@@ -83,26 +83,33 @@ socket.on('playVideo', (data) => {
     if (!player) return;
     isRemoteAction = true;
     player.loadVideoById({ videoId: data.videoId, startSeconds: data.currentTime });
-    setTimeout(() => { isRemoteAction = false; }, 1000);
 });
 
 socket.on('playerControl', (data) => {
-    if (!player) return;
+    if (!player || !player.getPlayerState) return;
     
     isRemoteAction = true;
+    const currentState = player.getPlayerState();
 
     if (data.action === 'play') {
-        player.seekTo(data.currentTime);
-        player.playVideo();
+        if (Math.abs(player.getCurrentTime() - data.currentTime) > 1) {
+            player.seekTo(data.currentTime, true);
+        }
+        if (currentState !== YT.PlayerState.PLAYING) {
+            player.playVideo();
+        } else {
+            isRemoteAction = false;
+        }
     } else if (data.action === 'pause') {
-        player.pauseVideo();
+        if (currentState !== YT.PlayerState.PAUSED) {
+            player.pauseVideo();
+        } else {
+            isRemoteAction = false;
+        }
     } else if (data.action === 'seek') {
-        player.seekTo(data.currentTime);
-    }
-
-    setTimeout(() => {
+        player.seekTo(data.currentTime, true);
         isRemoteAction = false;
-    }, 600);
+    }
 });
 
 let player;
@@ -116,9 +123,13 @@ window.onYouTubeIframeAPIReady = function () {
     });
 };
 
-
 function onPlayerStateChange(event) {
-    if (isRemoteAction) return;
+    if (isRemoteAction) {
+        if (event.data === YT.PlayerState.PLAYING || event.data === YT.PlayerState.PAUSED) {
+            isRemoteAction = false;
+        }
+        return;
+    }
 
     if (event.data === YT.PlayerState.PLAYING) {
         socket.emit('playerControl', { action: 'play', currentTime: player.getCurrentTime() });
@@ -129,17 +140,16 @@ function onPlayerStateChange(event) {
     }
 }
 
-// 10秒ごとに現在時刻をサーバーに送る
 setInterval(() => {
     if (player && player.getPlayerState && player.getPlayerState() === YT.PlayerState.PLAYING) {
         socket.emit('playerControl', { action: 'seek', currentTime: player.getCurrentTime() });
     }
 }, 10000);
 
-// 画面が表示状態に戻ったとき再同期
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
         socket.emit('requestSync');
     }
 });
+
 
