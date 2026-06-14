@@ -183,7 +183,7 @@ io.on('connection', (socket) => {
     });
 
     // 切断処理
-    socket.on('disconnect', () => {
+        socket.on('disconnect', () => {
         if (!currentRoom || !rooms[currentRoom]) return;
 
         const room = rooms[currentRoom];
@@ -195,15 +195,21 @@ io.on('connection', (socket) => {
         if (room.users.length === 0) {
             delete rooms[currentRoom];
         } else {
+            // ★追加：ユーザーが減っても、再生中ならその状態と時間を維持させる
+            if (room.isPlaying) {
+                const elapsedTime = (Date.now() - room.lastSyncTime) / 1000;
+                room.currentTime += elapsedTime;
+                room.lastSyncTime = Date.now();
+            }
+
             io.to(currentRoom).emit('updateUsers', room.users);
             io.to(currentRoom).emit('chatMessage', {
                 userName: 'システム',
-                text: `${userName} が退室しました`,
+                text: `${userName} が一時的に離脱、または退室しました`,
                 time: new Date().toLocaleTimeString('ja-JP', {hour: '2-digit', minute:'2-digit'})
             });
         }
     });
-});
 
 http.listen(PORT, () => {
     console.log(`TubeTube running on port ${PORT}`);
