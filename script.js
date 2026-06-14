@@ -97,6 +97,7 @@ socket.on('playVideo', (data) => {
         } else if (!data.isPlaying && currentState !== YT.PlayerState.PAUSED) {
             player.pauseVideo();
         }
+        isRemoteAction = false;
     } else {
         if (data.isPlaying) {
             player.loadVideoById({ videoId: data.videoId, startSeconds: data.currentTime });
@@ -104,11 +105,6 @@ socket.on('playVideo', (data) => {
             player.cueVideoById({ videoId: data.videoId, startSeconds: data.currentTime });
         }
     }
-
-    // 誤作動・無限ループ防止：リモート操作後、0.5秒間は自分のイベントを無視する
-    setTimeout(() => {
-        isRemoteAction = false;
-    }, 500);
 });
 
 socket.on('playerControl', (data) => {
@@ -123,17 +119,16 @@ socket.on('playerControl', (data) => {
         }
         if (currentState !== YT.PlayerState.PLAYING) {
             player.playVideo();
+        } else {
+            isRemoteAction = false;
         }
     } else if (data.action === 'pause') {
         if (currentState !== YT.PlayerState.PAUSED) {
             player.pauseVideo();
+        } else {
+            isRemoteAction = false;
         }
     }
-
-    // 誤作動・無限ループ防止：リモート操作後、0.5秒間は自分のイベントを無視する
-    setTimeout(() => {
-        isRemoteAction = false;
-    }, 500);
 });
 
 let player;
@@ -150,8 +145,12 @@ window.onYouTubeIframeAPIReady = function () {
 function onPlayerStateChange(event) {
     if (document.hidden) return;
 
-    // リモートから操作された時は、自分の通知イベントを完全にストップさせて無限ループを防御
-    if (isRemoteAction) return;
+    if (isRemoteAction) {
+        if (event.data === YT.PlayerState.PLAYING || event.data === YT.PlayerState.PAUSED) {
+            isRemoteAction = false;
+        }
+        return;
+    }
 
     if (event.data === YT.PlayerState.PLAYING) {
         socket.emit('playerControl', { action: 'play', currentTime: player.getCurrentTime() });
@@ -162,9 +161,15 @@ function onPlayerStateChange(event) {
     }
 }
 
-// 画面が表に戻ってきたとき（タブのアクティブ化）だけ、安全に再同期を要求する
+setInterval(() => {
+    if (player && player.getPlayerState) {
+        socket.emit('requestSync');
+    }
+}, 10000);
+
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
         socket.emit('requestSync');
     }
 });
+
