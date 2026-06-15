@@ -159,12 +159,12 @@ window.onYouTubeIframeAPIReady = function () {
 };
 
 // プレイヤーの状態が変わったときの処理
+// script.js 修正箇所
 function onPlayerStateChange(event) {
-    // 自分が裏（非表示）にいるときは、サーバーへ「停止」命令などを絶対に送らない
     if (document.hidden) return;
-
     if (isRemoteAction) {
-        if (event.data === YT.PlayerState.PLAYING || event.data === YT.PlayerState.PAUSED) {
+        if (event.data === YT.PlayerState.PLAYING || 
+            event.data === YT.PlayerState.PAUSED) {
             isRemoteAction = false;
         }
         return;
@@ -173,7 +173,12 @@ function onPlayerStateChange(event) {
     if (event.data === YT.PlayerState.PLAYING) {
         socket.emit('playerControl', { action: 'play', currentTime: player.getCurrentTime() });
     } else if (event.data === YT.PlayerState.PAUSED) {
-        socket.emit('playerControl', { action: 'pause', currentTime: player.getCurrentTime() });
+        // ★バッファリング直後のPAUSEDは無視する
+        setTimeout(() => {
+            if (player.getPlayerState() === YT.PlayerState.PAUSED) {
+                socket.emit('playerControl', { action: 'pause', currentTime: player.getCurrentTime() });
+            }
+        }, 300);
     } else if (event.data === YT.PlayerState.ENDED) {
         socket.emit('nextVideo');
     }
