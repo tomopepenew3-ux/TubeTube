@@ -6,27 +6,31 @@ const path = require('path');
 
 const PORT = 3003;
 
-// 静的ファイル（html/css/js）を配信
 app.use(express.static(__dirname));
 
-// どのURLでもindex.htmlを返す（部屋名はURLで管理）
 app.get('/:room', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// 部屋の状態を管理するオブジェクト
 const rooms = {};
+
+// ★追加：再生中の現在時刻を動的に計算する関数
+// isPlayingがtrueのとき、lastSyncTimeからの経過秒数を足して返す
+// pause中はcurrentTimeをそのまま返す
+function getRoomCurrentTime(room) {
+    if (!room.isPlaying) return room.currentTime;
+    const elapsed = (Date.now() - room.lastSyncTime) / 1000;
+    return room.currentTime + elapsed;
+}
 
 io.on('connection', (socket) => {
     let currentRoom = null;
 
-    // 入室処理
     socket.on('joinRoom', (data) => {
         const { roomName, userName } = data;
         currentRoom = roomName;
         socket.join(roomName);
 
-        // 部屋がなければ作る
         if (!rooms[roomName]) {
             rooms[roomName] = {
                 users: [],
@@ -40,7 +44,6 @@ io.on('connection', (socket) => {
 
         const room = rooms[roomName];
 
-        // 満員チェック
         if (room.users.length >= 8) {
             socket.emit('full', 'この部屋は満員です。');
             socket.leave(roomName);
@@ -49,7 +52,6 @@ io.on('connection', (socket) => {
 
         room.users.push({ id: socket.id, name: userName });
 
-        // 入室した人に現在の部屋の状態を送る
         socket.emit('roomState', {
             users: room.users,
             queue: room.queue,
@@ -58,26 +60,25 @@ io.on('connection', (socket) => {
             currentTime: room.currentTime
         });
 
-        // 入室時に再生中の動画があれば送る
+        // ★修正：入室時に送るcurrentTimeを動的計算に変更
+        // 以前は room.currentTime（固定値）だったので後から入った人がズレていた
         if (room.queue.length > 0) {
             socket.emit('playVideo', {
                 videoId: room.queue[room.currentIndex].videoId,
-                currentTime: room.currentTime
+                currentTime: getRoomCurrentTime(room), // ←ここが修正点
+                isPlaying: room.isPlaying
             });
         }
 
-        // 全員に参加者リスト更新を通知
         io.to(currentRoom).emit('updateUsers', room.users);
 
-        // 入室メッセージをチャットに流す
         io.to(currentRoom).emit('chatMessage', {
             userName: 'システム',
             text: `${userName} が入室しました`,
-            time: new Date().toLocaleTimeString('ja-JP', {hour: '2-digit', minute:'2-digit'})
+            time: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
         });
     });
 
-    // 動画をキューに追加
     socket.on('addToQueue', (data) => {
         const room = rooms[currentRoom];
         if (!room) return;
@@ -85,22 +86,21 @@ io.on('connection', (socket) => {
         const { videoId, title, addedBy } = data;
         room.queue.push({ videoId, title, addedBy });
 
-        // 全員のキュー表示を更新
         io.to(currentRoom).emit('updateQueue', room.queue);
 
-        // 1本目なら全員自動再生
         if (room.queue.length === 1) {
             room.isPlaying = true;
             room.currentIndex = 0;
+            room.currentTime = 0;
+            room.lastSyncTime = Date.now(); // ★追加：再生開始時刻を記録
             io.to(currentRoom).emit('playVideo', {
-            videoId: room.queue[0].videoId,
-            currentTime: 0,
-            isPlaying: true
+                videoId: room.queue[0].videoId,
+                currentTime: 0,
+                isPlaying: true
             });
         }
     });
 
-    // 再生・一時停止・シーク
     socket.on('playerControl', (data) => {
         const room = rooms[currentRoom];
         if (!room) return;
@@ -110,19 +110,21 @@ io.on('connection', (socket) => {
         if (action === 'play') {
             room.isPlaying = true;
             room.currentTime = currentTime;
-            room.lastSyncTime = Date.now();
+            room.lastSyncTime = Date.now(); // ★追加：再生再開時刻を記録
             io.to(currentRoom).emit('playerControl', { action: 'play', currentTime });
         } else if (action === 'pause') {
             room.isPlaying = false;
-            room.currentTime = currentTime;
+            room.currentTime = currentTime; // pauseのときは固定値でOK
             io.to(currentRoom).emit('playerControl', { action: 'pause', currentTime });
         } else if (action === 'seek') {
-            // seekはサーバーの時刻を更新するだけ（全員には送らない）
+            // ★修正：seekも全員に伝播するように変更
+            // 以前はサーバーの時刻を更新するだけで誰にも送っていなかった
             room.currentTime = currentTime;
+            room.lastSyncTime = Date.now();
+            io.to(currentRoom).emit('playerControl', { action: 'seek', currentTime });
         }
     });
 
-    // 次の動画へ
     socket.on('nextVideo', () => {
         const room = rooms[currentRoom];
         if (!room) return;
@@ -131,14 +133,15 @@ io.on('connection', (socket) => {
             room.currentIndex++;
             room.currentTime = 0;
             room.isPlaying = true;
+            room.lastSyncTime = Date.now(); // ★追加：次の動画開始時刻を記録
             io.to(currentRoom).emit('playVideo', {
                 videoId: room.queue[room.currentIndex].videoId,
-                currentTime: 0
+                currentTime: 0,
+                isPlaying: true
             });
         }
     });
 
-    // キューから削除
     socket.on('removeFromQueue', (data) => {
         const room = rooms[currentRoom];
         if (!room) return;
@@ -153,7 +156,6 @@ io.on('connection', (socket) => {
         io.to(currentRoom).emit('updateQueue', room.queue);
     });
 
-    // チャット
     socket.on('chatMessage', (data) => {
         const room = rooms[currentRoom];
         if (!room) return;
@@ -161,11 +163,10 @@ io.on('connection', (socket) => {
         io.to(currentRoom).emit('chatMessage', {
             userName: data.userName,
             text: data.text,
-            time: new Date().toLocaleTimeString('ja-JP', {hour: '2-digit', minute:'2-digit'})
+            time: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
         });
     });
 
-    // リアクション
     socket.on('reaction', (data) => {
         io.to(currentRoom).emit('reaction', {
             userName: data.userName,
@@ -173,18 +174,19 @@ io.on('connection', (socket) => {
         });
     });
 
-    // 裏から戻ってきたとき再同期リクエスト
+    // ★修正：requestSyncでも動的計算したcurrentTimeを返す
+    // 以前は古い固定値を返していたので裏から戻ってきたときにズレていた
     socket.on('requestSync', () => {
         const room = rooms[currentRoom];
         if (!room || room.queue.length === 0) return;
         socket.emit('playVideo', {
             videoId: room.queue[room.currentIndex].videoId,
-            currentTime: room.currentTime
+            currentTime: getRoomCurrentTime(room), // ←ここが修正点
+            isPlaying: room.isPlaying
         });
     });
 
-    // 切断処理
-        socket.on('disconnect', () => {
+    socket.on('disconnect', () => {
         if (!currentRoom || !rooms[currentRoom]) return;
 
         const room = rooms[currentRoom];
@@ -196,10 +198,10 @@ io.on('connection', (socket) => {
         if (room.users.length === 0) {
             delete rooms[currentRoom];
         } else {
-            // ★追加：ユーザーが減っても、再生中ならその状態と時間を維持させる
+            // ★修正：切断時もcurrentTimeを動的計算してから保存
+            // 以前は再生中でも経過時間を加算していなかった
             if (room.isPlaying) {
-                const elapsedTime = (Date.now() - room.lastSyncTime) / 1000;
-                room.currentTime += elapsedTime;
+                room.currentTime = getRoomCurrentTime(room);
                 room.lastSyncTime = Date.now();
             }
 
@@ -207,7 +209,7 @@ io.on('connection', (socket) => {
             io.to(currentRoom).emit('chatMessage', {
                 userName: 'システム',
                 text: `${userName} が一時的に離脱、または退室しました`,
-                time: new Date().toLocaleTimeString('ja-JP', {hour: '2-digit', minute:'2-digit'})
+                time: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
             });
         }
     });
@@ -216,4 +218,3 @@ io.on('connection', (socket) => {
 http.listen(PORT, () => {
     console.log(`TubeTube running on port ${PORT}`);
 });
-
