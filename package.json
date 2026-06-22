@@ -1,0 +1,7 @@
+{
+  "name": "TubeTube",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "npx http-server -p 3003 -d false"
+  }
+}
